@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<LangVersion>12</LangVersion>
+		<Version>1.2.0</Version>
+		<RootNamespace>JinnDev.$(MSBuildProjectName.Replace(" ", "_"))</RootNamespace>
+		<AssemblyName>JinnDev.$(MSBuildProjectName.Replace(" ", "_"))</AssemblyName>
+		<TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<Authors>JinnDev</Authors>
+		<Company>Jinn Studios</Company>
+		<Product>Official Jinn Studios Proof of Concept for JCMU - Git Init</Product>
+	</PropertyGroup>
+
+	<ItemGroup>
+	  <None Remove="combine_code_new.bat" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="JinnDev.JCMU.SDK" Version="1.2.0" />
+		<PackageReference Include="JinnDev.Utilities.CommandLine" Version="8.0.4" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Update="manifest.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+
+</Project>
