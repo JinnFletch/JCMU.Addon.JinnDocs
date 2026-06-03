@@ -5,7 +5,8 @@
   "Author": "JinnFletch",
   "Menu": {
     "MenuItemName": "Generate Docs",
-    "Ordinal": 10,
+    "IconPath": "imageres.dll,-102",
+    "Ordinal": 40,
     "Category": "Analysis",
     "RunInBackground": false,
     "SubItems": null
