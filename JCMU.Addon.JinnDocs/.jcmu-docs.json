@@ -23,6 +23,7 @@
   "WholeHogPaths": [
     "AppSettings.json",
     "manifest.json",
-    "Program.cs"
+    "Program.cs",
+    "/"
   ]
 }

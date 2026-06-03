@@ -24,23 +24,37 @@ public class CSharpParser : ILanguageParser
             if (string.IsNullOrWhiteSpace(line)) continue;
 
             // 1. Scope Detection (class, struct, record, interface)
-            if (line.StartsWith("public") && TryExtractScope(line, out string detectedScope))
+            if (line.StartsWith("public") && TryExtractScope(line, out string detectedScope, out string scopeType))
             {
                 currentScope = detectedScope;
-
-                // Print the scope declaration itself so the LLM knows the container
                 if (hasContent) sb.AppendLine();
+
+                // Look backwards for a summary on the scope itself
+                string scopeSummary = ExtractSummaryLookbehind(lines, i);
+                if (!string.IsNullOrWhiteSpace(scopeSummary))
+                {
+                    sb.AppendLine($"// Summary: {scopeSummary}");
+                }
+
                 sb.AppendLine($"// --- Scope: {currentScope} ---");
-                sb.AppendLine(ExtractSignature(lines, i) ?? line);
+
+                // If it's a DTO-style type, grab the whole thing. Otherwise, just the signature.
+                if (scopeType == "record" || scopeType == "struct")
+                {
+                    sb.AppendLine(ExtractWholeBlock(lines, ref i));
+                }
+                else
+                {
+                    sb.AppendLine(ExtractSignature(lines, i) ?? line);
+                }
+
                 hasContent = true;
                 continue;
             }
 
             // 2. General Public API Detection (Methods, Properties, Fields)
-            // Ensure we don't accidentally parse a 'public' keyword inside a string or comment
             if (line.StartsWith("public ") && !line.Contains("class ") && !line.Contains("record ") && !line.Contains("interface ") && !line.Contains("struct "))
             {
-                // Look backwards to see if there's a summary attached to this signature
                 string cleanSummary = ExtractSummaryLookbehind(lines, i);
                 string? signature = ExtractSignature(lines, i);
 
@@ -60,6 +74,43 @@ public class CSharpParser : ILanguageParser
         if (!hasContent) sb.AppendLine("// No public API found in this file.");
         sb.AppendLine("```\n");
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Slurps lines until the brace count balances to 0, or it hits a trailing semicolon (for positional records).
+    /// </summary>
+    private static string ExtractWholeBlock(string[] lines, ref int currentIndex)
+    {
+        var sb = new StringBuilder();
+        int braceCount = 0;
+        bool startedBraces = false;
+
+        for (int j = currentIndex; j < lines.Length; j++)
+        {
+            string line = lines[j];
+            sb.AppendLine(line);
+
+            braceCount += line.Count(c => c == '{');
+            braceCount -= line.Count(c => c == '}');
+
+            if (line.Contains('{')) startedBraces = true;
+
+            // Stop Condition 1: Positional record ending with ';' (e.g. public record Foo(int A);)
+            if (!startedBraces && line.TrimEnd().EndsWith(";"))
+            {
+                currentIndex = j; // Advance outer loop
+                break;
+            }
+
+            // Stop Condition 2: Braces balanced and closed
+            if (startedBraces && braceCount <= 0)
+            {
+                currentIndex = j; // Advance outer loop
+                break;
+            }
+        }
+
+        return sb.ToString().TrimEnd();
     }
 
     // Add this helper method to look backwards for XML comments
@@ -88,14 +139,16 @@ public class CSharpParser : ILanguageParser
         return match.Success ? CleanSummary(match.Groups[1].Value) : string.Empty;
     }
 
-    private static bool TryExtractScope(string line, out string scopeName)
+    private static bool TryExtractScope(string line, out string scopeName, out string scopeType)
     {
         scopeName = string.Empty;
+        scopeType = string.Empty;
 
         // Matches: public [modifiers] class/struct/record/interface [Name<T>]
         var match = Regex.Match(line, @"public.*?\b(class|struct|record|interface)\s+(?<name>\w+(?:<[^>]+>)?)");
         if (match.Success)
         {
+            scopeType = match.Groups[1].Value; // Extracts 'class', 'record', etc.
             scopeName = match.Groups["name"].Value;
             return true;
         }

@@ -64,7 +64,7 @@ public class AmalgamationService
                         _host.UI.WriteLine($"  [CHILD ROLLUP] Initiating: {childConfig.ProjectName}", ConsoleColor.Magenta);
 
                         // Recursive Call
-                        var childResult = await RunAsync(childDir, childConfig, isChildRollup, token).ConfigureAwait(false);
+                        var childResult = await RunAsync(childDir, childConfig, true, token).ConfigureAwait(false);
 
                         await childResult.MatchAsync(
                             someAsync: async childFilePath =>

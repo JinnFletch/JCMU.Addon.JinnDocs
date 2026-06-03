@@ -8,6 +8,7 @@ public class ParserFactory
     public ParserFactory()
     {
         Register(new CSharpParser());
+        Register(new MarkdownParser());
     }
 
     public void Register(ILanguageParser parser)

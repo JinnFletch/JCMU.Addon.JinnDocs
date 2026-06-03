@@ -155,6 +155,9 @@ public static class FileDiscoveryService
         foreach (var rule in ignorePaths)
         {
             if (string.IsNullOrWhiteSpace(rule)) continue;
+
+            if (rule == "/" || rule == "*" || rule == ".") return true;
+
             var normalizedRule = rule.Replace('\\', '/').Trim('/');
 
             // Match 1: Exact name match (e.g., "bin", "node_modules", "Program.cs")
