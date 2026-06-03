@@ -36,34 +36,56 @@ public class CSharpParser : ILanguageParser
                 continue;
             }
 
-            // 2. Summary & Signature Extraction
-            if (line.StartsWith("///") && line.Contains("<summary>"))
+            // 2. General Public API Detection (Methods, Properties, Fields)
+            // Ensure we don't accidentally parse a 'public' keyword inside a string or comment
+            if (line.StartsWith("public ") && !line.Contains("class ") && !line.Contains("record ") && !line.Contains("interface ") && !line.Contains("struct "))
             {
-                // Extract and clean the summary
-                string rawSummary = ExtractSummaryBlock(lines, ref i);
-                string cleanSummary = CleanSummary(rawSummary);
+                // Look backwards to see if there's a summary attached to this signature
+                string cleanSummary = ExtractSummaryLookbehind(lines, i);
+                string? signature = ExtractSignature(lines, i);
 
-                // Look ahead to find the actual code signature
-                int signatureStartIndex = i + 1;
-                string? signature = ExtractSignature(lines, signatureStartIndex);
-
-                if (!string.IsNullOrWhiteSpace(signature) && signature.Contains("public "))
+                if (!string.IsNullOrWhiteSpace(signature))
                 {
                     if (hasContent) sb.AppendLine();
-                    sb.AppendLine($"// Summary: {cleanSummary}");
+                    if (!string.IsNullOrWhiteSpace(cleanSummary))
+                    {
+                        sb.AppendLine($"// Summary: {cleanSummary}");
+                    }
                     sb.AppendLine(signature);
                     hasContent = true;
                 }
             }
         }
 
-        if (!hasContent)
-        {
-            sb.AppendLine("// No public documented API found in this file.");
-        }
-
+        if (!hasContent) sb.AppendLine("// No public API found in this file.");
         sb.AppendLine("```\n");
         return sb.ToString();
+    }
+
+    // Add this helper method to look backwards for XML comments
+    private static string ExtractSummaryLookbehind(string[] lines, int currentIndex)
+    {
+        var summaryLines = new List<string>();
+
+        // Walk backwards from the line just above 'public ...'
+        for (int j = currentIndex - 1; j >= 0; j--)
+        {
+            string prevLine = lines[j].Trim();
+
+            // Skip attributes like [JsonIgnore] that might be between the comment and the signature
+            if (prevLine.StartsWith("[") && prevLine.EndsWith("]")) continue;
+
+            if (!prevLine.StartsWith("///")) break;
+
+            summaryLines.Insert(0, prevLine);
+        }
+
+        if (summaryLines.Count == 0) return string.Empty;
+
+        var fullBlock = string.Join(Environment.NewLine, summaryLines);
+        var match = Regex.Match(fullBlock, @"<summary>(.*?)</summary>", RegexOptions.Singleline);
+
+        return match.Success ? CleanSummary(match.Groups[1].Value) : string.Empty;
     }
 
     private static bool TryExtractScope(string line, out string scopeName)
@@ -79,27 +101,6 @@ public class CSharpParser : ILanguageParser
         }
 
         return false;
-    }
-
-    private static string ExtractSummaryBlock(string[] lines, ref int currentIndex)
-    {
-        var sb = new StringBuilder();
-
-        for (int j = currentIndex; j < lines.Length; j++)
-        {
-            string currentLine = lines[j].Trim();
-
-            if (!currentLine.StartsWith("///"))
-                break; // Stop when we hit code or empty space
-
-            sb.AppendLine(currentLine);
-            currentIndex = j; // Advance the outer loop counter so we don't re-process these lines
-        }
-
-        var fullBlock = sb.ToString();
-        var match = Regex.Match(fullBlock, @"<summary>(.*?)</summary>", RegexOptions.Singleline);
-
-        return match.Success ? match.Groups[1].Value : string.Empty;
     }
 
     private static string? ExtractSignature(string[] lines, int startIndex)

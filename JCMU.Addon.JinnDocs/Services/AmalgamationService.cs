@@ -22,7 +22,7 @@ public class AmalgamationService
     /// Supports recursive calls for child roll-ups.
     /// </summary>
     /// <returns>A monad containing the absolute path to the generated .jinndoc.md file.</returns>
-    public async Task<Maybe<string>> RunAsync(string targetDirectory, DocConfig config, CancellationToken token)
+    public async Task<Maybe<string>> RunAsync(string targetDirectory, DocConfig config, bool isChildRollup, CancellationToken token)
     {
         return await Maybe.TryAsync<string>(async () =>
         {
@@ -40,8 +40,16 @@ public class AmalgamationService
             using var fileStream = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.Read);
             using var writer = new StreamWriter(fileStream, Encoding.UTF8);
 
-            await writer.WriteLineAsync($"# {config.ProjectName} Documentation").ConfigureAwait(false);
-            await writer.WriteLineAsync($"> Generated on {DateTimeOffset.Now:f}\n").ConfigureAwait(false);
+            if (isChildRollup)
+            {
+                await writer.WriteLineAsync($"\n## [Sub-Project] {config.ProjectName}").ConfigureAwait(false);
+                await writer.WriteLineAsync($"---").ConfigureAwait(false);
+            }
+            else
+            {
+                await writer.WriteLineAsync($"# {config.ProjectName} Documentation").ConfigureAwait(false);
+                await writer.WriteLineAsync($"> Generated on {DateTimeOffset.Now:f}\n").ConfigureAwait(false);
+            }
 
             // 3. Process Child Rollups Recursively
             foreach (var childDir in discovery.ChildRollupDirectories)
@@ -56,7 +64,7 @@ public class AmalgamationService
                         _host.UI.WriteLine($"  [CHILD ROLLUP] Initiating: {childConfig.ProjectName}", ConsoleColor.Magenta);
 
                         // Recursive Call
-                        var childResult = await RunAsync(childDir, childConfig, token).ConfigureAwait(false);
+                        var childResult = await RunAsync(childDir, childConfig, isChildRollup, token).ConfigureAwait(false);
 
                         await childResult.MatchAsync(
                             someAsync: async childFilePath =>

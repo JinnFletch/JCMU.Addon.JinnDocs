@@ -104,7 +104,7 @@ public class JinnDocsAddon : IJcmuAddon
         // Register future parsers here
 
         var engine = new AmalgamationService(factory, host);
-        var result = await engine.RunAsync(targetDirectory, config, token).ConfigureAwait(false);
+        var result = await engine.RunAsync(targetDirectory, config, false, token).ConfigureAwait(false);
 
         return result.HasValue ? Maybe.SUCCESS : Maybe.Fail(result.Message);
     }
