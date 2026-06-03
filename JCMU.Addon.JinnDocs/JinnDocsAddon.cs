@@ -18,24 +18,28 @@ public class JinnDocsAddon : IJcmuAddon
         host.UI.WriteLine("              JinnDocs LLM Packager               ", ConsoleColor.Cyan);
         host.UI.WriteLine("==================================================\n", ConsoleColor.Cyan);
 
-        var configResult = ConfigService.LoadConfig(context.TargetDirectory);
+        // 1. Resolve Config: Try to load it. If that fails, run the Virgin Setup.
+        var resolvedConfigResult = await ConfigService.LoadConfig(context.TargetDirectory)
+            .MatchAsync(
+                someAsync: config => Task.FromResult(Maybe.Some(config)),
+                noneAsync: async _ => await RunVirginSetupAsync(context.TargetDirectory, host, token).ConfigureAwait(false)
+            ).ConfigureAwait(false);
 
+        // 2. Main Pipeline: If we successfully got a config (loaded OR newly setup), run the Menu.
+        return await resolvedConfigResult.BindAsync<DocConfig, int>(async config =>
+        {
+            // Ensure Ledger is up to date
+            await GlobalLedgerService.AddOrUpdateProjectAsync(context.TargetDirectory, config.ProjectName, host).ConfigureAwait(false);
 
-        return await configResult.MatchAsync(
-            someAsync: async config =>
+            while (!token.IsCancellationRequested)
             {
-                // Ensure Ledger is up to date (in case folder was moved or config was checked into git elsewhere)
-                await GlobalLedgerService.AddOrUpdateProjectAsync(context.TargetDirectory, config.ProjectName, host).ConfigureAwait(false);
+                host.UI.WriteLine($"\n--- JinnDocs Menu: {config.ProjectName} ---", ConsoleColor.Yellow);
+                host.UI.WriteLine("  1. Generate Documentation");
+                host.UI.WriteLine("  2. Edit Configuration");
+                host.UI.WriteLine("  3. Copy Configuration From Elsewhere");
+                host.UI.WriteLine("  4. Exit");
 
-                while (!token.IsCancellationRequested)
-                {
-                    host.UI.WriteLine($"\n--- JinnDocs Menu: {config.ProjectName} ---", ConsoleColor.Yellow);
-                    host.UI.WriteLine("  1. Generate Documentation");
-                    host.UI.WriteLine("  2. Edit Configuration");
-                    host.UI.WriteLine("  3. Copy Configuration From Elsewhere");
-                    host.UI.WriteLine("  4. Exit");
-
-                    var shouldBreak = await host.PromptUserAsync("\nSelect Option [1]:")
+                var shouldBreak = await host.PromptUserAsync("\nSelect Option [1]:")
                     .TapAsync(
                         someActionAsync: async input =>
                         {
@@ -48,41 +52,21 @@ public class JinnDocsAddon : IJcmuAddon
                         noneActionAsync: async err =>
                         {
                             if (token.IsCancellationRequested) return; // Ctrl+C aborted
-
-                            // Default action on Enter
+                                                                       // Default action on Enter
                             await RunAmalgamationAsync(context.TargetDirectory, config, host, token).ConfigureAwait(false);
                         }
                     )
                     .MatchAsync(
-                        someAsync: val =>
-                        {
-                            if (val == "1" || val == "4") return Task.FromResult(true);
-                            return Task.FromResult(false);
-                        },
-                        noneAsync: _ =>
-                        {
-                            return Task.FromResult(!token.IsCancellationRequested);
-                        }
+                        someAsync: val => Task.FromResult(val == "1" || val == "4"),
+                        noneAsync: _ => Task.FromResult(!token.IsCancellationRequested)
                     )
                     .ConfigureAwait(false);
 
-                    if (shouldBreak) break;
-                }
-
-                return Maybe.Some(-1); // Pause before closing
-            },
-            noneAsync: async failMonad =>
-            {
-                var setupResult = await RunVirginSetupAsync(context.TargetDirectory, host, token).ConfigureAwait(false);
-                if (!setupResult.HasValue) return Maybe.Some(0); // Exit if cancelled or failed
-
-                return await setupResult.BindAsync<DocConfig, int>(async setupVal =>
-                {
-                    return (await RunAmalgamationAsync(context.TargetDirectory, setupVal, host, token).ConfigureAwait(false))
-                        .Match(() => 5, x => -1);
-                }).ConfigureAwait(false);
+                if (shouldBreak) break;
             }
-        ).ConfigureAwait(false);
+
+            return Maybe.Some(-1); // Pause before closing window
+        }).ConfigureAwait(false);
     }
 
     private static async Task<Maybe<DocConfig>> RunVirginSetupAsync(string targetDirectory, IHostServices host, CancellationToken token)
