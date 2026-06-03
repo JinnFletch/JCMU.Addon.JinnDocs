@@ -1,0 +1,28 @@
+{
+  "ProjectName": "JinnDocs",
+  "IncludeExtensions": [
+    ".cs",
+    ".sql",
+    ".json",
+    ".md",
+    ".ts",
+    ".js",
+    ".html",
+    ".css"
+  ],
+  "IgnorePaths": [
+    "bin",
+    "obj",
+    ".git",
+    ".vs",
+    "node_modules",
+    "Publish",
+    "TestResults"
+  ],
+  "IncludePaths": [],
+  "WholeHogPaths": [
+    "AppSettings.json",
+    "manifest.json",
+    "Program.cs"
+  ]
+}

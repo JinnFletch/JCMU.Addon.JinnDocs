@@ -249,3 +249,4 @@ ModelManifest.xml
 AllCode.txt
 combine_cs_files.bat
 combine_code_new.bat
+*.jinndoc.md
