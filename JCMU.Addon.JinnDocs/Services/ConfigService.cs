@@ -40,7 +40,7 @@ public static class ConfigService
         return new DocConfig
         {
             ProjectName = projectName,
-            IncludeExtensions = new List<string> { ".cs", ".sql", ".json", ".md", ".ts", ".js", ".html", ".css" },
+            IncludeExtensions = new List<string> { ".cs", ".csproj", ".sln", ".slnx", ".sql", ".json", ".md", ".ts", ".js", ".html", ".css" },
             IgnorePaths = new List<string> { "bin", "obj", ".git", ".vs", "node_modules", "Publish", "TestResults" },
             IncludePaths = new List<string>(), // Empty by default
             WholeHogPaths = new List<string> { "AppSettings.json", "manifest.json", "Program.cs" }

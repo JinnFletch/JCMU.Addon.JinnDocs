@@ -2,6 +2,9 @@
   "ProjectName": "JinnDocs",
   "IncludeExtensions": [
     ".cs",
+    ".csproj",
+    ".sln",
+    ".slnx",
     ".sql",
     ".json",
     ".md",

@@ -12,6 +12,7 @@ public class WholeHogParser : ILanguageParser
 
         // Using C# raw string literals to perfectly preserve markdown formatting
         return $"""
+
         ### {filePath}
         ```{mdLang}
         {fileContent}
@@ -28,7 +29,7 @@ public class WholeHogParser : ILanguageParser
             "js" => "javascript",
             "ts" => "typescript",
             "json" => "json",
-            "xml" => "xml",
+            "csproj" or "xml" or "sln" or "slnx" => "xml",
             "html" => "html",
             "css" => "css",
             "sql" => "sql",

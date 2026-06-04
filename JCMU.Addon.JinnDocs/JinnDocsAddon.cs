@@ -37,7 +37,8 @@ public class JinnDocsAddon : IJcmuAddon
                 host.UI.WriteLine("  1. Generate Documentation");
                 host.UI.WriteLine("  2. Edit Configuration");
                 host.UI.WriteLine("  3. Copy Configuration From Elsewhere");
-                host.UI.WriteLine("  4. Exit");
+                host.UI.WriteLine("  4. Delete all JinnDocs");
+                host.UI.WriteLine("  5. Exit");
 
                 var shouldBreak = await host.PromptUserAsync("\nSelect Option [1]:")
                     .TapAsync(
@@ -46,18 +47,20 @@ public class JinnDocsAddon : IJcmuAddon
                             if (input == "1") await RunAmalgamationAsync(context.TargetDirectory, config, host, token).ConfigureAwait(false);
                             else if (input == "2") config = await ConfigEditorUi.RunEditorLoopAsync(context.TargetDirectory, config, host, token).ConfigureAwait(false);
                             else if (input == "3") config = await CopyConfigurationAsync(context.TargetDirectory, config, host, token).ConfigureAwait(false);
-                            else if (input == "4") return; // Let loop end naturally
+                            else if (input == "4") await DeleteAllJinnDocsAsync(context.TargetDirectory, host).ConfigureAwait(false);
+                            else if (input == "5") return; // Let loop end naturally
                             else host.UI.WriteLine("Invalid option.", ConsoleColor.Red);
                         },
                         noneActionAsync: async err =>
                         {
                             if (token.IsCancellationRequested) return; // Ctrl+C aborted
-                                                                       // Default action on Enter
+                            // Default action on Enter
                             await RunAmalgamationAsync(context.TargetDirectory, config, host, token).ConfigureAwait(false);
                         }
                     )
                     .MatchAsync(
-                        someAsync: val => Task.FromResult(val == "1" || val == "4"),
+                        // Update this to break the loop if they choose 1 (Run) or 5 (Exit)
+                        someAsync: val => Task.FromResult(val == "1" || val == "5"),
                         noneAsync: _ => Task.FromResult(!token.IsCancellationRequested)
                     )
                     .ConfigureAwait(false);
@@ -104,7 +107,7 @@ public class JinnDocsAddon : IJcmuAddon
         // Register future parsers here
 
         var engine = new AmalgamationService(factory, host);
-        var result = await engine.RunAsync(targetDirectory, config, false, token).ConfigureAwait(false);
+        var result = await engine.RunAsync(targetDirectory, targetDirectory, config, false, token).ConfigureAwait(false);
 
         return result.HasValue ? Maybe.SUCCESS : Maybe.Fail(result.Message);
     }
@@ -182,5 +185,39 @@ public class JinnDocsAddon : IJcmuAddon
             set.Add(item); // HashSet automatically prevents duplicates
         }
         return set.ToList();
+    }
+
+    private static Task DeleteAllJinnDocsAsync(string targetDirectory, IHostServices host)
+    {
+        host.UI.WriteLine("\nScanning for generated JinnDocs...", ConsoleColor.DarkGray);
+
+        try
+        {
+            // The C# equivalent of a recursive Windows search
+            var files = Directory.GetFiles(targetDirectory, "*.jinndoc.md", SearchOption.AllDirectories);
+
+            if (files.Length == 0)
+            {
+                host.UI.WriteLine("No JinnDocs found to delete.", ConsoleColor.Yellow);
+                return Task.CompletedTask;
+            }
+
+            foreach (var file in files)
+            {
+                File.Delete(file);
+
+                // Optional: print out what is being deleted relative to the root for a cleaner UI
+                var relativePath = Path.GetRelativePath(targetDirectory, file);
+                host.UI.WriteLine($"  [-] Deleted: {relativePath}", ConsoleColor.DarkGray);
+            }
+
+            host.UI.WriteLine($"\n[SUCCESS] Cleaned up {files.Length} document(s).", ConsoleColor.Green);
+        }
+        catch (Exception ex)
+        {
+            host.UI.WriteLine($"\n[ERROR] Failed to delete files: {ex.Message}", ConsoleColor.Red);
+        }
+
+        return Task.CompletedTask;
     }
 }

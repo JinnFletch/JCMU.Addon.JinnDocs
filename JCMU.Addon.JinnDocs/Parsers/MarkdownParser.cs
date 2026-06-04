@@ -11,9 +11,22 @@ public class MarkdownParser : ILanguageParser
         // colliding with markdown formatting.
         return $"""
         
-        <markdown_doc path="{filePath}">
+        ### {filePath}
+        ======================================
+        BEGIN MARKDOWN FOR {filePath}
+        This type of manual descriptive delimiter is used because markdown
+        can include code block ticks, xml, and other delimiter usage itself
+        which makes it confusing when the markdown file starts and ends.
+        So the end of this file is where it says "END MARKDOWN FOR"
+        ======================================
+
         {fileContent}
-        </markdown_doc>
+        
+        ======================================
+        END MARKDOWN FOR {filePath}
+        This manual descriptive delimiter ends the markdown file
+        ======================================
+
         
         """;
     }

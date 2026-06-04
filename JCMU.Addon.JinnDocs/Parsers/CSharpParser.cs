@@ -12,40 +12,63 @@ public class CSharpParser : ILanguageParser
         var sb = new StringBuilder();
         var lines = fileContent.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
 
-        string currentScope = string.Empty;
         bool hasContent = false;
+        bool isInsideClass = false;
 
         sb.AppendLine($"### {filePath}");
         sb.AppendLine("```csharp");
+
+        // Extract namespace and place it at the top
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("namespace "))
+            {
+                sb.AppendLine(trimmed);
+                sb.AppendLine();
+                break;
+            }
+        }
 
         for (int i = 0; i < lines.Length; i++)
         {
             string line = lines[i].Trim();
             if (string.IsNullOrWhiteSpace(line)) continue;
+            if (line.StartsWith("namespace ")) continue;
 
-            // 1. Scope Detection (class, struct, record, interface)
+            // 1. Scope Detection (class, struct, record, interface, enum)
             if (line.StartsWith("public") && TryExtractScope(line, out string detectedScope, out string scopeType))
             {
-                currentScope = detectedScope;
-                if (hasContent) sb.AppendLine();
+                // If we were already inside a class, close it before starting a new scope
+                if (isInsideClass)
+                {
+                    sb.AppendLine("}");
+                    sb.AppendLine();
+                    isInsideClass = false;
+                }
+                else if (hasContent)
+                {
+                    sb.AppendLine();
+                }
 
-                // Look backwards for a summary on the scope itself
+                // Extract summary
                 string scopeSummary = ExtractSummaryLookbehind(lines, i);
                 if (!string.IsNullOrWhiteSpace(scopeSummary))
                 {
                     sb.AppendLine($"// Summary: {scopeSummary}");
                 }
 
-                sb.AppendLine($"// --- Scope: {currentScope} ---");
-
-                // If it's a DTO-style type, grab the whole thing. Otherwise, just the signature.
-                if (scopeType == "record" || scopeType == "struct")
+                // If it's a class, open a curly brace block. Otherwise, extract the whole thing.
+                if (scopeType == "class")
                 {
-                    sb.AppendLine(ExtractWholeBlock(lines, ref i));
+                    string sig = ExtractSignature(lines, i)?.TrimEnd(';') ?? line;
+                    sb.AppendLine(sig);
+                    sb.AppendLine("{");
+                    isInsideClass = true;
                 }
                 else
                 {
-                    sb.AppendLine(ExtractSignature(lines, i) ?? line);
+                    sb.AppendLine(ExtractWholeBlock(lines, ref i));
                 }
 
                 hasContent = true;
@@ -53,22 +76,30 @@ public class CSharpParser : ILanguageParser
             }
 
             // 2. General Public API Detection (Methods, Properties, Fields)
-            if (line.StartsWith("public ") && !line.Contains("class ") && !line.Contains("record ") && !line.Contains("interface ") && !line.Contains("struct "))
+            if (line.StartsWith("public ") && !line.Contains("class ") && !line.Contains("record ") && !line.Contains("interface ") && !line.Contains("struct ") && !line.Contains("enum "))
             {
                 string cleanSummary = ExtractSummaryLookbehind(lines, i);
                 string? signature = ExtractSignature(lines, i);
 
                 if (!string.IsNullOrWhiteSpace(signature))
                 {
-                    if (hasContent) sb.AppendLine();
+                    string indent = isInsideClass ? "    " : "";
+
                     if (!string.IsNullOrWhiteSpace(cleanSummary))
                     {
-                        sb.AppendLine($"// Summary: {cleanSummary}");
+                        sb.AppendLine($"{indent}// Summary: {cleanSummary}");
                     }
-                    sb.AppendLine(signature);
+
+                    sb.AppendLine($"{indent}{signature}");
                     hasContent = true;
                 }
             }
+        }
+
+        // Ensure we close the class if the file ended while inside one
+        if (isInsideClass)
+        {
+            sb.AppendLine("}");
         }
 
         if (!hasContent) sb.AppendLine("// No public API found in this file.");
@@ -76,9 +107,6 @@ public class CSharpParser : ILanguageParser
         return sb.ToString();
     }
 
-    /// <summary>
-    /// Slurps lines until the brace count balances to 0, or it hits a trailing semicolon (for positional records).
-    /// </summary>
     private static string ExtractWholeBlock(string[] lines, ref int currentIndex)
     {
         var sb = new StringBuilder();
@@ -95,17 +123,15 @@ public class CSharpParser : ILanguageParser
 
             if (line.Contains('{')) startedBraces = true;
 
-            // Stop Condition 1: Positional record ending with ';' (e.g. public record Foo(int A);)
             if (!startedBraces && line.TrimEnd().EndsWith(";"))
             {
-                currentIndex = j; // Advance outer loop
+                currentIndex = j;
                 break;
             }
 
-            // Stop Condition 2: Braces balanced and closed
             if (startedBraces && braceCount <= 0)
             {
-                currentIndex = j; // Advance outer loop
+                currentIndex = j;
                 break;
             }
         }
@@ -113,21 +139,15 @@ public class CSharpParser : ILanguageParser
         return sb.ToString().TrimEnd();
     }
 
-    // Add this helper method to look backwards for XML comments
     private static string ExtractSummaryLookbehind(string[] lines, int currentIndex)
     {
         var summaryLines = new List<string>();
 
-        // Walk backwards from the line just above 'public ...'
         for (int j = currentIndex - 1; j >= 0; j--)
         {
             string prevLine = lines[j].Trim();
-
-            // Skip attributes like [JsonIgnore] that might be between the comment and the signature
             if (prevLine.StartsWith("[") && prevLine.EndsWith("]")) continue;
-
             if (!prevLine.StartsWith("///")) break;
-
             summaryLines.Insert(0, prevLine);
         }
 
@@ -144,11 +164,10 @@ public class CSharpParser : ILanguageParser
         scopeName = string.Empty;
         scopeType = string.Empty;
 
-        // Matches: public [modifiers] class/struct/record/interface [Name<T>]
-        var match = Regex.Match(line, @"public.*?\b(class|struct|record|interface)\s+(?<name>\w+(?:<[^>]+>)?)");
+        var match = Regex.Match(line, @"public.*?\b(class|struct|record|interface|enum)\s+(?<name>\w+(?:<[^>]+>)?)");
         if (match.Success)
         {
-            scopeType = match.Groups[1].Value; // Extracts 'class', 'record', etc.
+            scopeType = match.Groups[1].Value;
             scopeName = match.Groups["name"].Value;
             return true;
         }
@@ -166,16 +185,18 @@ public class CSharpParser : ILanguageParser
             string codeLine = lines[k].Trim();
 
             if (string.IsNullOrWhiteSpace(codeLine)) continue;
-
-            // Skip Attributes (Simple heuristic: starts with [ and ends with ])
             if (codeLine.StartsWith("[") && codeLine.EndsWith("]")) continue;
-
-            // Stop if we hit something that isn't code (like another comment block)
             if (codeLine.StartsWith("///") || codeLine.StartsWith("//")) break;
 
             foundContent = true;
 
-            // Look for signature terminators
+            var propMatch = Regex.Match(codeLine, @"\{[^}]*\b(get|set|init)\b[^}]*\}");
+            if (propMatch.Success)
+            {
+                sb.Append(codeLine.Substring(0, propMatch.Index + propMatch.Length));
+                break;
+            }
+
             int braceIndex = codeLine.IndexOf('{');
             int arrowIndex = codeLine.IndexOf("=>");
             int semiIndex = codeLine.IndexOf(';');
@@ -187,35 +208,40 @@ public class CSharpParser : ILanguageParser
 
             if (cutOffIndex != -1)
             {
-                // Terminator found, append up to the cutoff point and break
                 sb.Append(codeLine.Substring(0, cutOffIndex));
+
+                // Inject { get; set; } for properties, ensuring we DON'T do it for class declarations
+                if (cutOffIndex == braceIndex && !sb.ToString().Contains("(") && !sb.ToString().Contains("class "))
+                {
+                    sb.Append(" { get; set; }");
+                    return Regex.Replace(sb.ToString(), @"\s+", " ").Trim();
+                }
+
                 break;
             }
             else
             {
-                // Multiline signature, keep appending
                 sb.Append(codeLine + " ");
             }
         }
 
         if (!foundContent) return null;
 
-        // Cleanup multiple spaces and format
         string cleanSig = Regex.Replace(sb.ToString(), @"\s+", " ").Trim();
         cleanSig = cleanSig.Replace("( ", "(");
 
-        // Ensure it ends cleanly (we stripped the terminators for uniformity)
-        return cleanSig + ";";
+        if (!cleanSig.EndsWith("}") && !cleanSig.EndsWith(";"))
+        {
+            cleanSig += ";";
+        }
+
+        return cleanSig;
     }
 
     private static string CleanSummary(string raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return "[No Summary Found]";
-
-        // Remove '///' residues
         var noSlashes = raw.Replace("///", "");
-
-        // Normalize whitespace: replace line breaks, tabs, and multiple spaces with a single space
         return Regex.Replace(noSlashes, @"\s+", " ").Trim();
     }
 }

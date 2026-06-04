@@ -22,7 +22,7 @@ public class AmalgamationService
     /// Supports recursive calls for child roll-ups.
     /// </summary>
     /// <returns>A monad containing the absolute path to the generated .jinndoc.md file.</returns>
-    public async Task<Maybe<string>> RunAsync(string targetDirectory, DocConfig config, bool isChildRollup, CancellationToken token)
+    public async Task<Maybe<string>> RunAsync(string globalRootDirectory, string currentDirectory, DocConfig config, bool isChildRollup, CancellationToken token)
     {
         return await Maybe.TryAsync<string>(async () =>
         {
@@ -31,10 +31,10 @@ public class AmalgamationService
             // 1. Generate Timestamped Filename
             string timestamp = DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmss");
             string outputFileName = $"{config.ProjectName}_{timestamp}.jinndoc.md";
-            string outputPath = Path.Combine(targetDirectory, outputFileName);
+            string outputPath = Path.Combine(currentDirectory, outputFileName); // Save in the current directory being processed
 
-            // 2. Discover Files and Child Rollups
-            var discovery = FileDiscoveryService.DiscoverFiles(targetDirectory, config);
+            // 2. Discover Files and Child Rollups (Use currentDirectory for local rules)
+            var discovery = FileDiscoveryService.DiscoverFiles(currentDirectory, config);
 
             // Open the file stream for writing
             using var fileStream = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.Read);
@@ -63,8 +63,8 @@ public class AmalgamationService
                     {
                         _host.UI.WriteLine($"  [CHILD ROLLUP] Initiating: {childConfig.ProjectName}", ConsoleColor.Magenta);
 
-                        // Recursive Call
-                        var childResult = await RunAsync(childDir, childConfig, true, token).ConfigureAwait(false);
+                        // Recursive Call: Pass globalRootDirectory down, but update currentDirectory to childDir
+                        var childResult = await RunAsync(globalRootDirectory, childDir, childConfig, true, token).ConfigureAwait(false);
 
                         await childResult.MatchAsync(
                             someAsync: async childFilePath =>
@@ -97,11 +97,12 @@ public class AmalgamationService
             {
                 if (token.IsCancellationRequested) break;
 
-                string relativePath = Path.GetRelativePath(targetDirectory, filePath).Replace('\\', '/');
-                _host.UI.WriteLine($"  [+] Processing: {relativePath}", ConsoleColor.DarkGray);
+                // Create the display path relative to the GLOBAL root, not the child root.
+                string displayPath = Path.GetRelativePath(globalRootDirectory, filePath).Replace('\\', '/');
+                _host.UI.WriteLine($"  [+] Processing: {displayPath}", ConsoleColor.DarkGray);
 
-                // Check if the file matches a WholeHog rule using the existing path evaluation logic
-                bool isWholeHog = FileDiscoveryService.IsIgnored(filePath, targetDirectory, config.WholeHogPaths);
+                // We still use currentDirectory here, because WholeHog rules in the child's JSON apply to the child's domain.
+                bool isWholeHog = FileDiscoveryService.IsIgnored(filePath, currentDirectory, config.WholeHogPaths);
 
                 string content = await File.ReadAllTextAsync(filePath, token).ConfigureAwait(false);
                 string parsedOutput;
@@ -109,13 +110,13 @@ public class AmalgamationService
                 if (isWholeHog)
                 {
                     var parser = _parserFactory.GetFallbackParser();
-                    parsedOutput = parser.Parse(relativePath, content);
+                    parsedOutput = parser.Parse(displayPath, content);
                 }
                 else
                 {
                     string extension = Path.GetExtension(filePath);
                     var parser = _parserFactory.GetParser(extension);
-                    parsedOutput = parser.Parse(relativePath, content);
+                    parsedOutput = parser.Parse(displayPath, content);
                 }
 
                 await writer.WriteLineAsync(parsedOutput).ConfigureAwait(false);

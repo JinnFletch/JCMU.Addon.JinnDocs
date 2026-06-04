@@ -2,6 +2,9 @@
   "ProjectName": "JinnDocs",
   "IncludeExtensions": [
     ".cs",
+    ".csproj",
+    ".sln",
+    ".slnx",
     ".sql",
     ".json",
     ".md",
@@ -23,7 +26,6 @@
   "WholeHogPaths": [
     "AppSettings.json",
     "manifest.json",
-    "Program.cs",
-    "/"
+    "Program.cs"
   ]
 }

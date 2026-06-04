@@ -1,7 +1,7 @@
 {
   "AddonId": "JCMU.Addon.JinnDocs",
   "DisplayName": "Jinn Docs",
-  "Version": "1.0.0",
+  "Version": "1.0.1",
   "Author": "JinnFletch",
   "Menu": {
     "MenuItemName": "Generate Docs",
